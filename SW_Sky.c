@@ -62,6 +62,13 @@ void SW_SKY_read(void) {
 
 	MyFileName = SW_F_name(eSky);
 	f = OpenFile(MyFileName, "r");
+	char inbuf[3000]; // create inbuf so its large enough to hold 366 floats. This is important in function GetALine defined in filefuncs.c
+
+	// below 4 variables used to read in humidity values
+	int index = 0;
+	int offset;
+	double read_val;
+	char *data;
 
 	while (GetALine(f, inbuf)) {
 		switch (lineno) {
@@ -74,8 +81,17 @@ void SW_SKY_read(void) {
 					&v->windspeed[5], &v->windspeed[6], &v->windspeed[7], &v->windspeed[8], &v->windspeed[9], &v->windspeed[10], &v->windspeed[11]);
 			break;
 		case 2:
-			x = sscanf(inbuf, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", &v->r_humidity[0], &v->r_humidity[1], &v->r_humidity[2], &v->r_humidity[3], &v->r_humidity[4],
-					&v->r_humidity[5], &v->r_humidity[6], &v->r_humidity[7], &v->r_humidity[8], &v->r_humidity[9], &v->r_humidity[10], &v->r_humidity[11]);
+			// v->r_humidity[*] values being populated by sscanf
+			//x = sscanf(inbuf, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", &v->r_humidity[0], &v->r_humidity[1], &v->r_humidity[2], &v->r_humidity[3], &v->r_humidity[4],
+					//&v->r_humidity[5], &v->r_humidity[6], &v->r_humidity[7], &v->r_humidity[8], &v->r_humidity[9], &v->r_humidity[10], &v->r_humidity[11]);
+
+			data = inbuf; // set data equal to the humidty values in the climate.in file
+			// dynamically read all 366 vhumidity values and store them in r_humidity structure
+			while(sscanf(data, "%lf%n", &read_val, &offset)){ // continues to run until end of line
+				v->r_humidity_daily[index++] = read_val;
+				data += offset; // increment to next value in file
+				x++; // increment x to make sure x >= 12
+			}
 			break;
 		case 3:
 			x = sscanf(inbuf, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", &v->transmission[0], &v->transmission[1], &v->transmission[2], &v->transmission[3],
@@ -87,8 +103,12 @@ void SW_SKY_read(void) {
 					&v->snow_density[4], &v->snow_density[5], &v->snow_density[6], &v->snow_density[7], &v->snow_density[8], &v->snow_density[9], &v->snow_density[10],
 					&v->snow_density[11]);
 			break;
+		default:
+			x = 12;
+			break;
 		}
 		if (x < 12) {
+			printf("x fail: %d\n", x);
 			CloseFile(&f);
 			sprintf(errstr, "%s : invalid record %d.\n", MyFileName, lineno);
 			LogError(logfp, LOGFATAL, errstr);
@@ -109,13 +129,17 @@ void SW_SKY_init(double scale_sky[], double scale_wind[], double scale_rH[], dou
 	for(i=0; i<MAX_MONTHS; i++) {
 		v->cloudcov[i] = min(100., max(0.0,scale_sky[i]+v->cloudcov[i]));
 		v->windspeed[i] = max(0.0, scale_wind[i] * v->windspeed[i]);
-		v->r_humidity[i] = min(100., max(0.0, scale_rH[i] + v->r_humidity[i]));
+		//v->r_humidity[i] = min(100., max(0.0, scale_rH[i] + v->r_humidity[i]));
 		v->transmission[i] = min(1.0, max(0.0, scale_transmissivity[i]*v->transmission[i]));
+	}
+	// humidity needs to read 366 values
+	for(i = 0; i < MAX_DAYS; i++){
+		v->r_humidity_daily[i] = min(100., max(0.0, scale_rH[i] + v->r_humidity_daily[i]));
 	}
 	/* interpolate monthly input values to daily records */
 	interpolate_monthlyValues(v->cloudcov, v->cloudcov_daily);
 	interpolate_monthlyValues(v->windspeed, v->windspeed_daily);
-	interpolate_monthlyValues(v->r_humidity, v->r_humidity_daily);
+	//interpolate_monthlyValues(v->r_humidity, v->r_humidity_daily); // dont need to interpolate to daily since have daily values now, not monthly
 	interpolate_monthlyValues(v->transmission, v->transmission_daily);
 	interpolate_monthlyValues(v->snow_density, v->snow_density_daily);
 }

@@ -122,7 +122,7 @@ Bool GetALine(FILE *f, char buf[]) {
 	 */
 	char *p;
 	Bool not_eof = swFALSE;
-	while (!isnull( fgets(buf, 1024, f) )) {
+	while (!isnull( fgets(buf, 3000, f) )) {
 		if (!isnull( p=strchr(buf, (int) '\n')))
 			*p = '\0';
 
