@@ -103,6 +103,12 @@
 #include "SW_Model.h"
 extern SW_MODEL SW_Model;
 
+// backport: for output of radiation terms
+#include "SW_SoilWater.h"
+extern SW_SOILWAT SW_Soilwat;
+// end backport
+
+
 /* =================================================== */
 /*                  Global Variables                   */
 /* --------------------------------------------------- */
@@ -393,6 +399,15 @@ stepSize - the step size to use in integration
   double declin, par1, par2, ahou, hou, azmth, solrad, shwave, kelvin, arads, clrsky, ftemp, vapor, result, dayAngle, P, gamma, cosZ, sinZ, cosA, sinA, stepSize, azmthSlope,
 			rslope;
 
+  // backport: for output of radiation terms
+  SW_SOILWAT *sw = &SW_Soilwat;
+  static const double
+     // [MJ / m2] = [evaporative mm / day] * [1e3 kJ / m2] / [heat of vaporization] =
+     //             [evaporative mm / day] * 1e3 / 2490
+     convert_MJ_per_m2__to__mm_per_day = 0.4016063;
+  // end backport
+
+
 	/* Unit conversion factors:
 	 1 langley = 1 ly = 41840 J/m2 = 0.0168 evaporative-mm (1 [ly] / 2490 [kJ/kg heat of vaporization at about T = 10-15 C], see also Allen et al. (1998, ch. 1))
 	 1 mmHg = 101.325/760 kPa = 0.1333 kPa
@@ -432,6 +447,21 @@ stepSize - the step size to use in integration
 	solrad = (1440 / 6.283185) * 1.952 * solrad * transcoeff; /* 917. = S * 1440/pi with S = solar constant = 2.0 [langlay/min] (Sellers (1965), page 11) and with 1440 = min/day; however, solar constant S (Kopp et al. 2011) = 1.952 [langley/min] = 1361 [W/m2] <> Seller's value of S = 2.0 [langlay/min] = 1440 [W/m2] => instead of factor 917 (pre-Oct 11, 2012), it should be 895;factor 'transcoeff' is not in Seller's equation and drops out of the result with next line of code; */
 
 	shwave = solrad * .0168 / transcoeff; /* shwave used in Penman (1948), eqn. 13: shwave [evaporation equivalent-mm/day] = RA = total radiation if the atmosphere were perfectly clear; Rc = Short-wave radiation from sun and sky [usually in evaporation equivalent of mm/day] ? [radiation/cm2/day,] = RA*(0.18+0.55n/N) is approximation for Rothamsted based on monthly values over the period 1931-40; with x = 0.0168 = conversion factor from [ly] to [mm] */
+
+
+  // backport: radiation
+  clrsky = 1. - cloudcov / 100.;
+
+  // backport: tilted radiation
+  sw->H_ot = shwave / convert_MJ_per_m2__to__mm_per_day;
+  sw->H_gt = sw->H_ot * transcoeff * (.18 + .55 * clrsky); //cf. `par2`
+
+  // backport: horizontal radiation
+  solrad = ahou * sin(rlat) * sin(declin) + cos(rlat) * cos(declin) * sin(ahou);
+  sw->H_oh = (1440 / 6.283185) * 1.952 * solrad * 2. * .0168 / convert_MJ_per_m2__to__mm_per_day;
+  sw->H_gh = sw->H_oh * transcoeff * (.18 + .55 * clrsky); //cf. `par2`
+  // end packport
+
 
 	/* calculate long wave radiation */
 	kelvin = avgtemp + 273.15; /* kelvin = Ta = average air temperature of today [C] converted to [K] */
